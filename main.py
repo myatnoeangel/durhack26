@@ -1,9 +1,17 @@
 from dash import Dash, html, dcc, Input, Output
 import pandas as pd
+from pathlib import Path
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import random
 from database.connection import get_connection
+from strategies import (
+    prepare_weather,
+    weather_rule_curve,
+    random_forest_curve
+)
+from stockdata import get_sp500_strategy
 
 app = Dash(__name__)
 
@@ -26,7 +34,9 @@ def load_weather_data(city):
             SELECT
                 time AS date,
                 temperature AS temperature_2m,
-                humidity AS relative_humidity_2m
+                humidity AS relative_humidity_2m,
+                precipitation,
+                cloud_cover
             FROM weather_observations
             WHERE city = %s
             ORDER BY time
@@ -35,7 +45,9 @@ def load_weather_data(city):
             params=(city,)
         )
 
-    df["date"] = pd.to_datetime(df["date"], utc=True)
+    df["date"] = pd.to_datetime(
+        df["date"], utc=True
+    ).dt.tz_convert(None)
 
     return df
 
@@ -60,11 +72,12 @@ def load_stock_data(symbol):
             params=(symbol,)
         )
 
-    df["time"] = pd.to_datetime(df["time"], utc=True)
+    df["time"] = pd.to_datetime(
+        df["time"], utc=True
+    ).dt.tz_convert(None)
     df = df.set_index("time")
 
     return df
-
 
 # Load weather from TigerData
 london_data = load_weather_data("London")
@@ -73,10 +86,48 @@ sydney_data = load_weather_data("Sydney")
 newyork_data = load_weather_data("New York")
 shanghai_data = load_weather_data("Shanghai")
 
-# Load stocks from TigerData
-apple_data = load_stock_data("AAPL")
-tesla_data = load_stock_data("TSLA")
-microsoft_data = load_stock_data("MSFT")
+# -----------------------------
+# PREPARE WEATHER STRATEGY DATA
+# -----------------------------
+
+weather_dict = {
+    "London": london_data,
+    "Tokyo": tokyo_data,
+    "Sydney": sydney_data,
+    "New York": newyork_data,
+    "Shanghai": shanghai_data
+}
+
+CITIES = list(weather_dict.keys())
+
+weather_features = prepare_weather(weather_dict)
+
+sp500_model, sp500_buy_hold = get_sp500_strategy()
+
+# -----------------------------
+# LOAD STOCKS FROM TIGERDATA
+# -----------------------------
+
+STOCK_NAMES = {
+    "AAPL": "Apple",
+    "MSFT": "Microsoft",
+    "TSLA": "Tesla"
+}
+
+stock_cache = {
+    ticker: load_stock_data(ticker)
+    for ticker in STOCK_NAMES
+}
+
+apple_data = stock_cache["AAPL"]
+tesla_data = stock_cache["TSLA"]
+microsoft_data = stock_cache["MSFT"]
+
+# -----------------------------
+# S&P 500 BENCHMARK
+# -----------------------------
+
+sp500_model, sp500_buy_hold = get_sp500_strategy()
 
 # -----------------------------
 # STOCK DATA HELPERS
@@ -113,7 +164,7 @@ def build_figure(tickers, strategies):
     strategies = strategies or []
 
     for n, ticker in enumerate(tickers):
-        close = get_close(get_stock(ticker)).dropna()
+        close = get_close(stock_cache[ticker]).dropna()
         if close.empty:
             continue
         color = PALETTE[n % len(PALETTE)]

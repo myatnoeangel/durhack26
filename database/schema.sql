@@ -8,9 +8,18 @@ CREATE TABLE IF NOT EXISTS weather_observations (
     country TEXT NOT NULL,
     temperature DOUBLE PRECISION,
     humidity DOUBLE PRECISION,
+    precipitation DOUBLE PRECISION,
+    cloud_cover DOUBLE PRECISION,
 
     PRIMARY KEY (time, city)
 );
+
+-- Add missing columns to existing databases
+ALTER TABLE weather_observations
+ADD COLUMN IF NOT EXISTS precipitation DOUBLE PRECISION;
+
+ALTER TABLE weather_observations
+ADD COLUMN IF NOT EXISTS cloud_cover DOUBLE PRECISION;
 
 -- Convert weather table into hypertable
 SELECT create_hypertable(

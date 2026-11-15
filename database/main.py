@@ -1,9 +1,8 @@
 
 import pandas as pd
-
+from pathlib import Path
 from database.connection import get_connection
 from stockdata import getStockData
-from psycopg2.extras import execute_values
 from weatherdata import getAllPastYear
 
 
@@ -72,24 +71,45 @@ def insert_weather_data():
 
                     records.append((
                         pd.to_datetime(row.date, utc=True).to_pydatetime(),
+
                         city,
                         country,
+
                         None if pd.isna(row.temperature_2m)
                         else float(row.temperature_2m),
+
                         None if pd.isna(row.relative_humidity_2m)
-                        else float(row.relative_humidity_2m)
+                        else float(row.relative_humidity_2m),
+
+                        None if pd.isna(row.precipitation)
+                        else float(row.precipitation),
+
+                        None if pd.isna(row.cloud_cover)
+                        else float(row.cloud_cover)
                     ))
 
-                execute_values(
-                    cur,
+                cur.executemany(
                     """
                     INSERT INTO weather_observations
-                    (time, city, country, temperature, humidity)
-                    VALUES %s
-                    ON CONFLICT (time, city) DO NOTHING;
+                    (
+                        time,
+                        city,
+                        country,
+                        temperature,
+                        humidity,
+                        precipitation,
+                        cloud_cover
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+
+                    ON CONFLICT (time, city)
+                    DO UPDATE SET
+                        temperature = EXCLUDED.temperature,
+                        humidity = EXCLUDED.humidity,
+                        precipitation = EXCLUDED.precipitation,
+                        cloud_cover = EXCLUDED.cloud_cover;
                     """,
-                    records,
-                    page_size=1000
+                    records
                 )
 
                 conn.commit()
@@ -178,16 +198,14 @@ def insert_stock_data():
                         None if pd.isna(volume) else int(volume)
                     ))
 
-                execute_values(
-                    cur,
+                cur.executemany(
                     """
                     INSERT INTO stock_prices
                     (time, symbol, open, high, low, close, volume)
-                    VALUES %s
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (time, symbol) DO NOTHING;
                     """,
-                    records,
-                    page_size=1000
+                    records
                 )
 
                 conn.commit()

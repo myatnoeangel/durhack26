@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-import psycopg2
+import psycopg
 from dotenv import load_dotenv
 
 # Load .env from the database directory
